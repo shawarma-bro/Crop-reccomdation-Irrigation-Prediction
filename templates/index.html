@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crop & Irrigation Predictor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container my-5">
+    <h1 class="text-center mb-4">🌱 Crop & Irrigation Predictor</h1>
+
+    <div class="card p-4 shadow-sm mb-4">
+        <form method="POST" action="{{ url_for('predict') }}">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="soil" class="form-label">Soil Type</label>
+                    <select class="form-select" id="soil" name="soil" required>
+                        {% for soil in soil_options %}
+                            <option value="{{ soil }}" {% if input_data and input_data.soil==soil %}selected{% endif %}>{{ soil }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="terrain" class="form-label">Terrain</label>
+                    <select class="form-select" id="terrain" name="terrain" required>
+                        {% for t in terrain_options %}
+                            <option value="{{ t }}" {% if input_data and input_data.terrain==t %}selected{% endif %}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="rainfall" class="form-label">Rainfall (mm)</label>
+                    <input type="number" class="form-control" id="rainfall" name="rainfall" value="{{ input_data.rainfall if input_data else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="temperature" class="form-label">Temperature (°C)</label>
+                    <input type="number" class="form-control" id="temperature" name="temperature" value="{{ input_data.temperature if input_data else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="humidity" class="form-label">Humidity (%)</label>
+                    <input type="number" class="form-control" id="humidity" name="humidity" value="{{ input_data.humidity if input_data else '' }}" required>
+                </div>
+            </div>
+
+            <div class="text-center mb-3">
+                <button type="submit" class="btn btn-success btn-lg">Predict</button>
+            </div>
+        </form>
+
+        <div class="text-center mb-3">
+            <button type="button" class="btn btn-info" id="autoFillBtn">🌦 Auto-fill Weather</button>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {% if result %}
+    <div class="card p-4 shadow-sm">
+        <h4>Prediction Results</h4>
+        <hr>
+        <p><strong>Recommended Crop:</strong> {{ result.crop }}</p>
+        <p><strong>Irrigation Requirement:</strong> {{ result.irrigation_bucket }} ({{ result.irrigation_mm }} mm)</p>
+        {% if result.low_confidence %}
+            <p class="text-danger"><strong>⚠ Low confidence in crop prediction</strong></p>
+        {% endif %}
+        <p><em>{{ result.explanation }}</em></p>
+
+        <!-- Rainfall vs Irrigation Chart -->
+        <canvas id="rainfallChart" width="400" height="200"></canvas>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Auto-fill weather button
+    document.getElementById("autoFillBtn").addEventListener("click", async () => {
+        const terrain = document.getElementById("terrain").value;
+        if (!terrain) return alert("Please select a terrain first");
+
+        try {
+            const response = await fetch(`/get_weather_for_terrain?terrain=${terrain}`);
+            const data = await response.json();
+
+            if (!data.error) {
+                document.getElementById("temperature").value = data.temperature;
+                document.getElementById("humidity").value = data.humidity;
+                document.getElementById("rainfall").value = data.rainfall;
+            } else {
+                alert("Error fetching weather: " + data.error);
+            }
+        } catch(err) {
+            alert("Error fetching weather: " + err);
+        }
+    });
+
+    // Chart.js for prediction
+    {% if result %}
+    const ctx = document.getElementById('rainfallChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Rainfall', 'Predicted Irrigation'],
+            datasets: [{
+                label: 'mm',
+                data: [parseFloat("{{ input_data.rainfall }}"), parseFloat("{{ result.irrigation_mm }}")],
+                backgroundColor: ['#3498db', '#2ecc71']
+            }]
+        },
+        options: {
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+    {% endif %}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
